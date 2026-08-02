@@ -53,25 +53,26 @@ aur-keikaku-setup
 > 没有 paru?用 yay 也行:`yay -S aur-keikaku-dori`。
 > 两个都没有?先装一个:`sudo pacman -S --needed git base-devel && git clone https://aur.archlinux.org/paru.git && cd paru && makepkg -si`
 
-## 方法二:GitHub Release 直接安装(预编译包)
+## 方法二:GitHub Release 直接安装(预编译包,推荐)
 
-不用克隆仓库、不用等 AUR。包已经打好了,直接下载安装:
+不用克隆仓库、不用等 AUR、不用手动装依赖。一条命令全搞定:
 
 ```bash
-# 第 1 步:装 aria2(本项目唯一的依赖)
-sudo pacman -S aria2
-
-# 第 2 步:下载预编译包(约 17KB,极快)
+# 第 1 步:下载预编译包(约 17KB,极快)
 wget https://github.com/Bloodbeast522/aur-keikaku-dori/releases/download/v1.0.0/aur-keikaku-dori-1.0.0-1-any.pkg.tar.zst
 
-# 第 3 步:安装
+# 第 2 步:安装(aria2 不需要手动装,setup 会自动装)
 sudo pacman -U aur-keikaku-dori-1.0.0-1-any.pkg.tar.zst
 
-# 第 4 步:完成用户配置(只需要跑一次)
+# 第 3 步:一键配置(自动装 aria2 → 配置 DLAGENT → 测速选镜像)
 aur-keikaku-setup
 ```
 
-完成。第 4 步会提示你如果 `~/.local/bin` 不在 PATH,加一行配置(照它说的做)。
+`aur-keikaku-setup` 会自动完成:
+1. 检测 aria2,没有就自动 `sudo pacman -S aria2`(会要你输 sudo 密码)
+2. 装 4 个脚本到 `~/.local/bin`
+3. 配置 makepkg DLAGENT
+4. 测速选最快镜像
 
 > 国内下载 GitHub Release 慢?用镜像前缀:
 > `wget https://gh-proxy.com/https://github.com/Bloodbeast522/aur-keikaku-dori/releases/download/v1.0.0/aur-keikaku-dori-1.0.0-1-any.pkg.tar.zst`
