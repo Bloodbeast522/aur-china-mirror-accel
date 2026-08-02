@@ -11,11 +11,13 @@ MIRRORS=(
 CACHE_FILE="/tmp/.ghproxy-git-speed"
 CACHE_TTL=3600  # 1 hour
 
-# Cache hit → skip
+# Cache hit → skip (but only if an insteadOf rule is already active;
+# a stale cache must not block first-time setup)
 if [[ -f "$CACHE_FILE" ]]; then
     cache_mtime=$(stat -c %Y "$CACHE_FILE" 2>/dev/null || echo 0)
     now=$(date +%s)
-    if [[ $((now - cache_mtime)) -lt $CACHE_TTL ]]; then
+    if [[ $((now - cache_mtime)) -lt $CACHE_TTL ]] && \
+       git config --global --get-regexp '^url\..*\.insteadof$' >/dev/null 2>&1; then
         exit 0
     fi
 fi
