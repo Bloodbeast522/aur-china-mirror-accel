@@ -1,9 +1,0 @@
-# git insteadOf 规则 — 让所有 git 克隆走最快镜像
-# 由 bin/ghproxy-git-speedtest 自动测速并设置;也可以手动指定:
-# 大包克隆(仓库全量)用 ghfast.top,release 文件下载用 gh-proxy.com
-#
-# git 克隆(全量包):
-git config --global url."https://ghfast.top/https://github.com/".insteadOf "https://github.com/"
-#
-# 说明:bin 包 release 下载走 bin/aria2-ghproxy(DLAGENT 层),与 git 克隆是两条独立链路。
-# 单一镜像无法同时服务两种传输(ghfast.top 快在大包,gh-proxy.com 快在小文件)。
