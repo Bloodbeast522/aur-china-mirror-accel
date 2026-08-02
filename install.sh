@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# aur-ghproxy-accel 一键安装脚本
+# aur-keikaku-dori 一键安装脚本 (aur计划通)
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -30,7 +30,7 @@ if [[ -f "$MAKEPKG_CONF" ]] && grep -q "aria2-ghproxy" "$MAKEPKG_CONF"; then
 else
     cat >> "$MAKEPKG_CONF" <<EOF
 
-# aur-ghproxy-accel: AUR 源码下载走 aria2 + ghproxy 镜像 (https://github.com/Bloodbeast522/aur-ghproxy-accel)
+# aur-keikaku-dori: AUR 源码下载走 aria2 + ghproxy 镜像 (https://github.com/Bloodbeast522/aur-keikaku-dori)
 'https::$BIN_DIR/aria2-ghproxy -UWget -s16 -x16 -o %o %u'
 'http::$BIN_DIR/aria2-ghproxy -UWget -s16 -x16 -o %o %u'
 EOF

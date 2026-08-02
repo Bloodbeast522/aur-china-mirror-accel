@@ -36,22 +36,15 @@ DLAGENT for `-bin` releases. Works everywhere, designed for mainland China.
 > 本文假设你用的是 Arch / CachyOS / EndeavourOS 等 Arch 系系统。
 > 全程只需要一个终端窗口,跟着做就行。
 
-## 方法一:AUR 安装(最简单,推荐)
-
-如果 `aur-keikaku-dori` 已经提交到 AUR(见文末状态),那么:
+## 方法一:AUR 安装(⚠️ 当前不可用,跳过)
 
 ```bash
-# 第 1 步:装包(aria2 会自动一起装好,不用手动装)
 paru -S aur-keikaku-dori
-
-# 第 2 步:完成用户配置(只需要跑一次)
-aur-keikaku-setup
 ```
 
-完成。两条命令,之后 `paru -S` 任何包都会自动走加速。
-
-> 没有 paru?用 yay 也行:`yay -S aur-keikaku-dori`。
-> 两个都没有?先装一个:`sudo pacman -S --needed git base-devel && git clone https://aur.archlinux.org/paru.git && cd paru && makepkg -si`
+> **⚠️ 暂不可用**:AUR 的开放注册目前是关闭状态(注册页返回 503),
+> 作者没有 AUR 账号,所以这个包还没能提交上去。
+> **别等了,直接用下面的方法二**,效果完全一样。
 
 ## 方法二:GitHub Release 直接安装(预编译包,推荐)
 
