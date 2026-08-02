@@ -53,7 +53,30 @@ aur-keikaku-setup
 > 没有 paru?用 yay 也行:`yay -S aur-keikaku-dori`。
 > 两个都没有?先装一个:`sudo pacman -S --needed git base-devel && git clone https://aur.archlinux.org/paru.git && cd paru && makepkg -si`
 
-## 方法二:GitHub 手动安装
+## 方法二:GitHub Release 直接安装(预编译包)
+
+不用克隆仓库、不用等 AUR。包已经打好了,直接下载安装:
+
+```bash
+# 第 1 步:装 aria2(本项目唯一的依赖)
+sudo pacman -S aria2
+
+# 第 2 步:下载预编译包(约 17KB,极快)
+wget https://github.com/Bloodbeast522/aur-keikaku-dori/releases/download/v1.0.0/aur-keikaku-dori-1.0.0-1-any.pkg.tar.zst
+
+# 第 3 步:安装
+sudo pacman -U aur-keikaku-dori-1.0.0-1-any.pkg.tar.zst
+
+# 第 4 步:完成用户配置(只需要跑一次)
+aur-keikaku-setup
+```
+
+完成。第 4 步会提示你如果 `~/.local/bin` 不在 PATH,加一行配置(照它说的做)。
+
+> 国内下载 GitHub Release 慢?用镜像前缀:
+> `wget https://gh-proxy.com/https://github.com/Bloodbeast522/aur-keikaku-dori/releases/download/v1.0.0/aur-keikaku-dori-1.0.0-1-any.pkg.tar.zst`
+
+## 方法三:GitHub 手动安装(源码)
 
 如果你不想等 AUR 审核,或者想先看看代码,用这个:
 
