@@ -52,6 +52,7 @@ if [[ " $* " == *" -s "* || " $* " == *" --shared "* ]]; then
   "$REAL_GIT" "$@" 2>/dev/null
   clone_rc=$?
 
+  fixed=0
   if [[ -n "$src" && -n "$dst" && -d "$dst/.git" ]] && \
      git -C "$src" config --get remote.origin.promisor >/dev/null 2>&1; then
     orig_url="$(git -C "$src" config --get remote.origin.url 2>/dev/null)"
@@ -60,10 +61,18 @@ if [[ " $* " == *" -s "* || " $* " == *" --shared "* ]]; then
       git -C "$dst" config remote.origin.promisor true 2>/dev/null
       git -C "$dst" config remote.origin.partialclonefilter blob:none 2>/dev/null
       # Re-run checkout so missing blobs are fetched on demand from upstream.
-      git -C "$dst" checkout -f 2>/dev/null || \
-        git -C "$dst" restore --source=HEAD :/ 2>/dev/null
-      echo "[git-wrapper] partial-clone work copy fixed: promisor → $orig_url" >&2
+      if git -C "$dst" checkout -f 2>/dev/null || \
+         git -C "$dst" restore --source=HEAD :/ 2>/dev/null; then
+        fixed=1
+        echo "[git-wrapper] partial-clone work copy fixed: promisor → $orig_url" >&2
+      fi
     fi
+  fi
+
+  # If we fixed the checkout, the clone effectively succeeded — report success
+  # so makepkg's `git clone -s` step passes. Otherwise propagate the real rc.
+  if [[ $fixed -eq 1 ]]; then
+    exit 0
   fi
   exit $clone_rc
 fi

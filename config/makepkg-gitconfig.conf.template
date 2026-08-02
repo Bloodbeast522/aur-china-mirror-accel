@@ -1,0 +1,13 @@
+# makepkg 构建时 git 使用的配置(系统级)
+#
+# 为什么需要这个文件:
+# makepkg 会主动屏蔽 ~/.gitconfig(export GIT_CONFIG_GLOBAL=/dev/null,
+# /usr/share/makepkg/source/git.sh),防止用户全局 git 配置影响构建可复现性。
+# 所以 git insteadOf 镜像规则写在 ~/.gitconfig 里对 AUR -git 包克隆【无效】!
+# makepkg 官方支持的配置入口是 /etc/makepkg.d/gitconfig(GIT_CONFIG_SYSTEM)。
+#
+# 安装: sudo tee /etc/makepkg.d/gitconfig(需要 root,install.sh 里做)
+# 验证: makepkg 构建 -git 包时,GIT_TRACE_CURL=1 应看到 Host: ghfast.top
+
+[url "https://ghfast.top/https://github.com/"]
+	insteadOf = https://github.com/
