@@ -1,0 +1,63 @@
+#!/usr/bin/env bash
+# ghproxy-git-speedtest — test mirrors, set git insteadOf to the fastest
+set -euo pipefail
+
+MIRRORS=(
+    "https://ghfast.top"
+    "https://gh-proxy.com"
+    "https://ghproxy.net"
+)
+
+CACHE_FILE="/tmp/.ghproxy-git-speed"
+CACHE_TTL=3600  # 1 hour
+
+# Cache hit → skip
+if [[ -f "$CACHE_FILE" ]]; then
+    cache_mtime=$(stat -c %Y "$CACHE_FILE" 2>/dev/null || echo 0)
+    now=$(date +%s)
+    if [[ $((now - cache_mtime)) -lt $CACHE_TTL ]]; then
+        exit 0
+    fi
+fi
+
+best=""
+best_time=999999
+
+for mirror in "${MIRRORS[@]}"; do
+    # Real shallow clone test (git-pack path — same path git clones use.
+    # Catches mirrors that fail/stall on actual transfers, not just metadata)
+    test_url="${mirror}/https://github.com/tmux/tmux.git"
+    test_dir="/tmp/.ghproxy-test-$$"
+    rm -rf "$test_dir"
+    start=$(date +%s%N)
+    if timeout 15 git clone --quiet --depth 1 "$test_url" "$test_dir" &>/dev/null; then
+        end=$(date +%s%N)
+        elapsed=$(( (end - start) / 1000000 ))
+        echo "[ghproxy] ${mirror}: ${elapsed}ms" >&2
+        if [[ $elapsed -lt $best_time ]]; then
+            best_time=$elapsed
+            best=$mirror
+        fi
+    else
+        echo "[ghproxy] ${mirror}: FAILED" >&2
+    fi
+    rm -rf "$test_dir"
+done
+
+if [[ -z "$best" ]]; then
+    echo "[ghproxy] ⚠ All mirrors failed, disabling" >&2
+    git config --global --unset-all url."https://ghfast.top/https://github.com/".insteadOf 2>/dev/null || true
+    git config --global --unset-all url."https://gh-proxy.com/https://github.com/".insteadOf 2>/dev/null || true
+    git config --global --unset-all url."https://ghproxy.net/https://github.com/".insteadOf 2>/dev/null || true
+    date +%s > "$CACHE_FILE"
+    exit 1
+fi
+
+# Clear old configs and set new
+git config --global --unset-all url."https://ghfast.top/https://github.com/".insteadOf 2>/dev/null || true
+git config --global --unset-all url."https://gh-proxy.com/https://github.com/".insteadOf 2>/dev/null || true
+git config --global --unset-all url."https://ghproxy.net/https://github.com/".insteadOf 2>/dev/null || true
+git config --global url."${best}/https://github.com/".insteadOf "https://github.com/"
+
+echo "$best" > "$CACHE_FILE"
+echo "[ghproxy] → Best: ${best} (${best_time}ms), git configured" >&2

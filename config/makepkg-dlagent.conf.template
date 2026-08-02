@@ -1,0 +1,6 @@
+# makepkg.conf DLAGENT 片段 — 让 AUR 源码包下载走 aria2 + ghproxy 镜像
+# 用法:把以下两行追加到 ~/.config/pacman/makepkg.conf(用户级,覆盖系统级)
+# 注意:makepkg 的 %u 必须是 DLAGENT 的最后一个 token(它就地替换,不追加)
+# 前提:已安装 aria2 包;把 __USER__ 替换为你的用户名
+'https::/home/__USER__/.local/bin/aria2-ghproxy -UWget -s16 -x16 -o %o %u'
+'http::/home/__USER__/.local/bin/aria2-ghproxy -UWget -s16 -x16 -o %o %u'

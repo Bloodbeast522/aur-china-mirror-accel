@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Replace the last argument matching a GitHub release download URL with ghproxy
+url="${!#}"
+
+if [[ "$url" =~ ^https://github\.com/.*/releases/download/.*$ ]]; then
+    # Try gh-proxy.com first (most reliable), fall back to ghproxy.net
+    for mirror in "https://gh-proxy.com" "https://ghproxy.net"; do
+        new_url="${mirror}/${url}"
+        if /usr/bin/curl -qgb "" -fLC - --retry 1 --retry-delay 3 -o /dev/null -s --connect-timeout 10 --max-time 25 "$new_url" 2>/dev/null; then
+            echo "[curl-ghproxy] $mirror OK" >&2
+            set -- "${@:1:$#-1}" "$new_url"
+            exec /usr/bin/curl "$@"
+        fi
+    done
+    echo "[curl-ghproxy] All mirrors failed, trying direct" >&2
+fi
+
+exec /usr/bin/curl "$@"

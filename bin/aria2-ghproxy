@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+# ghproxy multi-mirror wrapper — tries mirrors in order, falls back to direct
+set -euo pipefail
+
+MIRRORS=(
+    "https://gh-proxy.com"
+    "https://ghproxy.net"
+)
+
+GH_RE='^https://github\.com/.*/releases/download/.*$'
+url="${!#}"
+
+if [[ ! "$url" =~ $GH_RE ]]; then
+    exec /usr/bin/aria2c "$@"
+fi
+
+for mirror in "${MIRRORS[@]}"; do
+    proxy_url="${mirror}/${url}"
+    echo "[aria2-ghproxy] Trying $mirror ..." >&2
+    if /usr/bin/aria2c --connect-timeout=10 --timeout=25 "${@:1:$#-1}" "$proxy_url" 2>/dev/null; then
+        exit 0
+    fi
+    echo "[aria2-ghproxy] $mirror failed, trying next..." >&2
+done
+
+# All mirrors failed — try direct as last resort
+echo "[aria2-ghproxy] All mirrors failed, trying direct..." >&2
+exec /usr/bin/aria2c "$@"
