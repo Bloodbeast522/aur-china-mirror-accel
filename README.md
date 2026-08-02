@@ -29,54 +29,92 @@ DLAGENT for `-bin` releases. Works everywhere, designed for mainland China.
 - **不承担任何责任**:用这个项目导致系统损坏、数据丢失、包坏掉,作者概不负责。**用之前请先读代码**,别盲信。
 - **此简介也是 AI 编写。**
 
-## 安装
+---
+
+# 安装指南(新手向,一步一步来)
+
+> 本文假设你用的是 Arch / CachyOS / EndeavourOS 等 Arch 系系统。
+> 全程只需要一个终端窗口,跟着做就行。
+
+## 方法一:AUR 安装(最简单,推荐)
+
+如果 `aur-keikaku-dori` 已经提交到 AUR(见文末状态),那么:
+
+```bash
+# 第 1 步:装包(aria2 会自动一起装好,不用手动装)
+paru -S aur-keikaku-dori
+
+# 第 2 步:完成用户配置(只需要跑一次)
+aur-keikaku-setup
+```
+
+完成。两条命令,之后 `paru -S` 任何包都会自动走加速。
+
+> 没有 paru?用 yay 也行:`yay -S aur-keikaku-dori`。
+> 两个都没有?先装一个:`sudo pacman -S --needed git base-devel && git clone https://aur.archlinux.org/paru.git && cd paru && makepkg -si`
+
+## 方法二:GitHub 手动安装
+
+如果你不想等 AUR 审核,或者想先看看代码,用这个:
+
+### 第 1 步:装 aria2(下载加速工具)
+
+```bash
+sudo pacman -S aria2
+```
+
+> 这一步必须做。`aria2` 是实际干活的多线程下载器,本项目只是指挥它。
+
+### 第 2 步:下载本项目
 
 ```bash
 git clone https://github.com/Bloodbeast522/aur-keikaku-dori
 cd aur-keikaku-dori
+```
+
+### 第 3 步:运行安装脚本
+
+```bash
 ./install.sh
 ```
 
-install.sh 会自动:
-1. 拷贝 4 个脚本到 `~/.local/bin/`(需已在 PATH 最前)
-2. 追加 DLAGENT 到 `~/.config/pacman/makepkg.conf`
-3. 运行测速,设置 git insteadOf 到最快镜像
+它会自动做三件事:
+- 把 4 个脚本复制到 `~/.local/bin/`(git 包装器、aria2-ghproxy 等)
+- 往 `~/.config/pacman/makepkg.conf` 里追加加速配置
+- 测试 3 个镜像站的速度,自动选最快的
 
-### 手动安装(不想跑脚本)
+### 第 4 步:确认 `~/.local/bin` 在 PATH 里
+
+install.sh 会提示你。如果它说"不在 PATH 中",执行:
 
 ```bash
-# 1. 脚本
-cp bin/* ~/.local/bin/
-
-# 2. makepkg DLAGENT(把 __USER__ 换成你的用户名)
-#    追加到 ~/.config/pacman/makepkg.conf
-cat config/makepkg-dlagent.conf.template | sed 's/__USER__/'$USER'/'
-
-# 3. git insteadOf(自动测速版)
-~/.local/bin/ghproxy-git-speedtest
-#    或手动指定大包镜像:
-git config --global url."https://ghfast.top/https://github.com/".insteadOf "https://github.com/"
+echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
+source ~/.bashrc
 ```
 
-## 验证
+> 这一步很关键:git 包装器放在 `~/.local/bin`,必须比系统自带的 `/usr/bin/git` 优先被找到,才能生效。
+
+### 第 5 步:验证(可选,但建议)
 
 ```bash
-# 1) DLAGENT 生效(makepkg 先读 /etc/makepkg.conf,用户级再覆盖)
-grep -E 'https::|http::' ~/.config/pacman/makepkg.conf   # 应看到 aria2-ghproxy
-grep -E 'https::|http::' /etc/makepkg.conf               # 系统级 curl(被覆盖,正常)
+# 看 git 是否走镜像(应输出一条 url.*.insteadOf)
+git config --global --get-regexp 'url.*insteadof'
 
-# 2) git 走镜像
-git config --global --get-regexp 'url.*insteadof'        # 应有一条 url.*.insteadOf
-git ls-remote https://github.com/git/git.git | head -3   # 应快速返回
+# 看 makepkg 下载器是否换成 aria2(应看到 aria2-ghproxy)
+grep -E 'https::|http::' ~/.config/pacman/makepkg.conf
 
-# 3) DLAGENT 包装器(404 是正常的,看的是镜像重写是否生效)
+# 随便下载一个 GitHub release 测试(404 是正常的,看有没有镜像尝试)
 ~/.local/bin/aria2-ghproxy -UWget -s16 -x16 -o /tmp/x.part \
   https://github.com/foo/bar/releases/download/v1/x.tar.gz
-# 应输出 "[aria2-ghproxy] Trying https://gh-proxy.com ..."
-
-# 4) partial clone 生效(makepkg 克隆 -git 包时)
-#    日志里 clone 命令应带 --filter=blob:none;大仓库应秒级完成
 ```
+
+看到类似 `[aria2-ghproxy] Trying https://gh-proxy.com ...` 就说明生效了。
+
+### 第 6 步:以后怎么用
+
+什么都不用做。以后 `paru -S` 更新 / 安装任何包:
+- **`-git` 包** → 自动 partial clone,不再卡死
+- **`-bin` 包** → 自动走镜像下载
 
 ## 已知限制
 
