@@ -11,7 +11,12 @@ GITCONFIG_SYS="/etc/makepkg.d/gitconfig"
 echo "==> 0/6 检查/安装依赖 aria2"
 if ! command -v aria2c >/dev/null 2>&1; then
     echo "    未安装 aria2,现在自动安装(需要输入 sudo 密码)..."
-    sudo pacman -S --noconfirm aria2
+    if sudo -n true 2>/dev/null; then
+        sudo pacman -S --noconfirm aria2
+    else
+        echo "    无法免密执行 sudo,请手动运行: sudo pacman -S aria2"
+        exit 1
+    fi
 fi
 command -v aria2c >/dev/null 2>&1 || { echo "错误: aria2 安装失败"; exit 1; }
 echo "    ✓ aria2 就绪"
@@ -45,6 +50,13 @@ fi
 echo "==> 3/6 配置 /etc/makepkg.d/gitconfig(git 克隆走镜像,需要 sudo)"
 if [[ -f "$GITCONFIG_SYS" ]] && grep -q "ghfast" "$GITCONFIG_SYS"; then
     echo "    已存在,跳过"
+elif ! sudo -n true 2>/dev/null; then
+    echo "    ⚠ 需要 sudo 写入 /etc/makepkg.d/gitconfig,但当前无法免密执行。"
+    echo "      请手动运行: sudo tee $GITCONFIG_SYS <<'EOF'"
+    echo "      [url \"https://ghfast.top/https://github.com/\"]"
+    echo "          insteadOf = https://github.com/"
+    echo "      EOF"
+    echo "      (否则 -git 包克隆不会走镜像!)"
 else
     sudo mkdir -p /etc/makepkg.d
     sudo tee "$GITCONFIG_SYS" > /dev/null <<'EOF'
