@@ -4,21 +4,33 @@
 # Problem: makepkg clones AUR -git sources with `git clone --mirror`, which
 # fetches ALL refs incl. hundreds of refs/pull/* — multi-hundred-MB packs that
 # stall on CN ghproxy mirrors. Verified on searxng (117MB repo): never finished
-# even on ghfast.top; with --filter=blob:none → 17MB in 18s.
+# even on ghfast.top; with --filter=blob:none → 17MB in ~20s.
 #
 # Fix:
-#  1. `clone --mirror` → append `--filter=blob:none` (partial clone: commits +
-#     trees only, ~10x smaller).
+#  1. `clone --mirror` → partial clone (`--filter=blob:none`), with MULTI-MIRROR
+#     fallback: try ghfast.top → gh-proxy.com → ghproxy.net → direct. Some
+#     mirrors don't support the filter protocol ("filter 'combine' not
+#     supported") or throttle; if partial clone fails everywhere, fall back to
+#     a plain mirror clone so the build is never blocked.
 #  2. makepkg's 2nd step `git clone -s <mirror> <work>` — the shared clone's
 #     checkout FAILS because the mirror lacks blobs, and its remote points at
 #     the LOCAL mirror (can't fetch missing blobs). After the clone, re-point
 #     the work copy's promisor at the ORIGINAL upstream URL and re-run the
 #     checkout so blobs are fetched on demand through the ghproxy insteadOf
-#     rule. Verified live 2026-08-02 on searxng-git: 989/989 files.
+#     rule. If the fix succeeds, exit 0 (makepkg checks the rc).
 #
 # Only intercepts clone; everything else passes through verbatim.
 
 REAL_GIT="${HERMES_REAL_GIT:-/usr/bin/git}"
+
+# Mirror order for --mirror clones (partial-clone capable first).
+# ghfast.top: best for full packs; gh-proxy.com: best for small files.
+# ghproxy.net: sometimes works, often not — kept as last resort.
+MIRRORS=(
+  "https://ghfast.top"
+  "https://gh-proxy.com"
+  "https://ghproxy.net"
+)
 
 # Fast path: not a clone subcommand → passthrough
 case " $* " in
@@ -29,15 +41,60 @@ esac
 
 # --- clone command ---
 
-# 1) --mirror → add partial-clone filter (makepkg step 1)
+# 1) --mirror → partial clone with multi-mirror fallback (makepkg step 1)
 if [[ " $* " == *" --mirror "* ]]; then
-  exec "$REAL_GIT" "$@" --filter=blob:none
+  # extract <url> <dir> = last two non-option args
+  nonopts=()
+  for a in "$@"; do
+    case "$a" in
+      -*|--*) : ;;
+      *) nonopts+=("$a") ;;
+    esac
+  done
+  url="${nonopts[-2]:-}"
+  dir="${nonopts[-1]:-}"
+
+  # Build a clone command with a rewritten URL through a given mirror prefix.
+  # Pass -c to neutralise the global insteadOf rule so the explicit mirror
+  # prefix isn't double-prefixed.
+  try_clone() { # $1=mirror-prefix-or-empty(use insteadOf), $2=filter-or-empty
+    local prefix="$1" filt="$2" target="$url"
+    if [[ -n "$prefix" ]]; then
+      target="${prefix}/${url}"
+      set -- "${@:1:$#-2}" "$target" "$dir"
+    fi
+    local -a extra=()
+    [[ -n "$filt" ]] && extra=("--filter=$filt")
+    if [[ -n "$prefix" ]]; then
+      env GIT_CONFIG_GLOBAL=/dev/null "$REAL_GIT" -c "url.${prefix}/https://github.com/.insteadOf=" clone --origin=origin --mirror "$target" "$dir" "${extra[@]}"
+    else
+      "$REAL_GIT" clone --origin=origin --mirror "$target" "$dir" "${extra[@]}"
+    fi
+  }
+
+  # 1a. try partial clone through each mirror
+  for m in "" "${MIRRORS[@]}"; do
+    if try_clone "$m" "blob:none"; then
+      exit 0
+    fi
+    echo "[git-wrapper] partial clone failed via ${m:-insteadOf}, trying next mirror..." >&2
+  done
+
+  # 1b. all mirrors rejected the filter → plain mirror clone (no filter)
+  echo "[git-wrapper] partial clone unsupported, falling back to full clone" >&2
+  for m in "" "${MIRRORS[@]}"; do
+    if try_clone "$m"; then
+      exit 0
+    fi
+  done
+
+  # 1c. last resort: direct, no mirror, no filter
+  exec "$REAL_GIT" "$@"
 fi
 
 # 2) -s / --shared clone → run (tolerate checkout failure), then re-point
 #    work-copy promisor at the original upstream and re-checkout
 if [[ " $* " == *" -s "* || " $* " == *" --shared "* ]]; then
-  # last two non-option args = <src> <dst>
   nonopts=()
   for a in "$@"; do
     case "$a" in
