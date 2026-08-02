@@ -34,7 +34,6 @@ MIRRORS=(
 
 # Fast path: not a clone subcommand → passthrough
 case " $* " in
-  *" clone "*) : ;;
   *" clone"*) : ;;
   *) exec "$REAL_GIT" "$@" ;;
 esac
@@ -58,15 +57,17 @@ if [[ " $* " == *" --mirror "* ]]; then
   # Pass -c to neutralise the global insteadOf rule so the explicit mirror
   # prefix isn't double-prefixed.
   try_clone() { # $1=mirror-prefix-or-empty(use insteadOf), $2=filter-or-empty
-    local prefix="$1" filt="$2" target="$url"
-    if [[ -n "$prefix" ]]; then
-      target="${prefix}/${url}"
-      set -- "${@:1:$#-2}" "$target" "$dir"
-    fi
+    local prefix="$1" filt="$2"
+    local target="$url"
     local -a extra=()
+    [[ -n "$prefix" ]] && target="${prefix}/${url}"
     [[ -n "$filt" ]] && extra=("--filter=$filt")
     if [[ -n "$prefix" ]]; then
-      env GIT_CONFIG_GLOBAL=/dev/null "$REAL_GIT" -c "url.${prefix}/https://github.com/.insteadOf=" clone --origin=origin --mirror "$target" "$dir" "${extra[@]}"
+      # Neutralise BOTH global and system insteadOf rules (makepkg installs
+      # /etc/makepkg.d/gitconfig) so the explicit mirror prefix isn't
+      # double-prefixed.
+      env GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null \
+        "$REAL_GIT" -c "url.${prefix}/https://github.com/.insteadOf=" clone --origin=origin --mirror "$target" "$dir" "${extra[@]}"
     else
       "$REAL_GIT" clone --origin=origin --mirror "$target" "$dir" "${extra[@]}"
     fi
