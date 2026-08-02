@@ -62,10 +62,10 @@ paru -S aur-keikaku-dori
 
 ```bash
 # 第 1 步:下载预编译包(约 17KB,极快)
-wget https://github.com/Bloodbeast522/aur-keikaku-dori/releases/download/v1.0.0/aur-keikaku-dori-1.0.0-1-any.pkg.tar.zst
+wget https://github.com/Bloodbeast522/aur-keikaku-dori/releases/download/v1.0.0/aur-keikaku-dori-1.0.0-2-any.pkg.tar.zst
 
 # 第 2 步:安装(aria2 不需要手动装,setup 会自动装)
-sudo pacman -U aur-keikaku-dori-1.0.0-1-any.pkg.tar.zst
+sudo pacman -U aur-keikaku-dori-1.0.0-2-any.pkg.tar.zst
 
 # 第 3 步:一键配置(自动装 aria2 → 配全部 4 条链路 → 测速选镜像)
 aur-keikaku-setup
@@ -80,7 +80,7 @@ aur-keikaku-setup
 6. 测速选最快镜像,设置用户级 insteadOf
 
 > 国内下载 GitHub Release 慢?用镜像前缀:
-> `wget https://gh-proxy.com/https://github.com/Bloodbeast522/aur-keikaku-dori/releases/download/v1.0.0/aur-keikaku-dori-1.0.0-1-any.pkg.tar.zst`
+> `wget https://gh-proxy.com/https://github.com/Bloodbeast522/aur-keikaku-dori/releases/download/v1.0.0/aur-keikaku-dori-1.0.0-2-any.pkg.tar.zst`
 
 ## 方法三:GitHub 手动安装(源码)
 
