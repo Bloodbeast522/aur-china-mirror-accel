@@ -138,8 +138,9 @@ cat ~/.config/pip/pip.conf
 
 ## 已知限制
 
-- `aria2-ghproxy` 只重写 `github.com/*/releases/download/*` 格式的 URL;
-  其他源站(官网直链、gitlab 等)直接透传,不走镜像
+- `aria2-ghproxy`(v2)重写 `github.com/*/releases/download/*` 格式的 URL;
+  其他源站会先探测 302 跳转,凡最终落到 GitHub releases 的(如官网下载
+  API 跳转)也自动走镜像;其余直接透传
 - 部分 ghproxy 镜像不支持 partial clone filter 协议(wrapper 会自动切换
   下一个镜像;全都不支持时回退全量克隆,仅大仓库会慢)
 - 镜像站本身会挂会换,`ghproxy-git-speedtest` 就是为此设计的;镜像失效时

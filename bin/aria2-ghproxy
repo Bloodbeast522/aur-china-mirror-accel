@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
 # ghproxy multi-mirror wrapper — tries mirrors in order, falls back to direct
+# v2: also handles URLs that 302-redirect to GitHub releases (e.g. official
+#     site download APIs like fluxdown.zerx.dev) — probes the redirect target
+#     and routes through mirrors when it lands on github.com releases.
 set -euo pipefail
 
 MIRRORS=(
@@ -11,9 +14,18 @@ GH_RE='^https://github\.com/.*/releases/download/.*$'
 url="${!#}"
 
 if [[ ! "$url" =~ $GH_RE ]]; then
-    exec /usr/bin/aria2c --no-conf "$@"
+    # Probe redirect target (HEAD, follow up to 5 redirs). On any failure,
+    # fall back to the original URL so behavior stays unchanged.
+    final="$(curl -sIL --max-time 12 --max-redirs 5 -o /dev/null -w '%{url_effective}' "$url" 2>/dev/null || true)"
+    if [[ -n "$final" && "$final" =~ $GH_RE ]]; then
+        echo "[aria2-ghproxy] $url -> $final (mirroring)" >&2
+        set -- "${@:1:$#-1}" "$final"
+    else
+        exec /usr/bin/aria2c --no-conf "$@"
+    fi
 fi
 
+url="${!#}"
 for mirror in "${MIRRORS[@]}"; do
     proxy_url="${mirror}/${url}"
     echo "[aria2-ghproxy] Trying $mirror ..." >&2
