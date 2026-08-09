@@ -1,20 +1,40 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Replace the last argument matching a GitHub release download URL with ghproxy
+# ghproxy multi-mirror wrapper for curl — mirrors GitHub download URLs.
+# v2 (2026-08-09): 与 aria2-ghproxy 对齐:
+#   - 正则同时匹配 releases/download/ 和 archive/ 路径(archive 格式直连会卡死)
+#   - 探测 302 跳转到 GitHub 的 URL(如官方站下载 API)
+
+MIRRORS=(
+    "https://gh-proxy.com"
+    "https://ghproxy.net"
+)
+
+GH_RE='^https://github\.com/.*/(releases/download/|archive/).*$'
 url="${!#}"
 
-if [[ "$url" =~ ^https://github\.com/.*/releases/download/.*$ ]]; then
-    # Try gh-proxy.com first (most reliable), fall back to ghproxy.net
-    for mirror in "https://gh-proxy.com" "https://ghproxy.net"; do
-        new_url="${mirror}/${url}"
-        if /usr/bin/curl -qgb "" -fLC - --retry 1 --retry-delay 3 -o /dev/null -s --connect-timeout 10 --max-time 25 "$new_url" 2>/dev/null; then
-            echo "[curl-ghproxy] $mirror OK" >&2
-            set -- "${@:1:$#-1}" "$new_url"
-            exec /usr/bin/curl "$@"
-        fi
-    done
-    echo "[curl-ghproxy] All mirrors failed, trying direct" >&2
+if [[ ! "$url" =~ $GH_RE ]]; then
+    # Probe redirect target (HEAD, follow up to 5 redirs). On any failure,
+    # fall back to the original URL so behavior stays unchanged.
+    final="$(curl -sIL --max-time 12 --max-redirs 5 -o /dev/null -w '%{url_effective}' "$url" 2>/dev/null || true)"
+    if [[ -n "$final" && "$final" =~ $GH_RE ]]; then
+        echo "[curl-ghproxy] $url -> $final (mirroring)" >&2
+        url="$final"
+    else
+        exec /usr/bin/curl "$@"
+    fi
 fi
 
+for mirror in "${MIRRORS[@]}"; do
+    proxy_url="${mirror}/${url}"
+    echo "[curl-ghproxy] Trying $mirror ..." >&2
+    if /usr/bin/curl -qgb "" -fLC - --retry 1 --retry-delay 3 -o /dev/null -s --connect-timeout 10 --max-time 25 "$proxy_url" 2>/dev/null; then
+        echo "[curl-ghproxy] $mirror OK" >&2
+        exec /usr/bin/curl "${@:1:$#-1}" "$proxy_url"
+    fi
+    echo "[curl-ghproxy] $mirror failed, trying next..." >&2
+done
+
+echo "[curl-ghproxy] All mirrors failed, trying direct" >&2
 exec /usr/bin/curl "$@"

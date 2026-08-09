@@ -9,7 +9,7 @@ MIRRORS=(
 )
 
 CACHE_FILE="/tmp/.ghproxy-git-speed"
-CACHE_TTL=3600  # 1 hour
+CACHE_TTL=900  # 15 minutes (原 1h: 镜像挂掉时缓存会锁死错误镜像长达 1 小时)
 
 # Cache hit → skip (but only if an insteadOf rule is already active;
 # a stale cache must not block first-time setup)
@@ -18,7 +18,13 @@ if [[ -f "$CACHE_FILE" ]]; then
     now=$(date +%s)
     if [[ $((now - cache_mtime)) -lt $CACHE_TTL ]] && \
        git config --global --get-regexp '^url\..*\.insteadof$' >/dev/null 2>&1; then
-        exit 0
+        # 快速健康检查: 缓存指向的镜像若已挂,无视缓存重新测速
+        cached="$(cat "$CACHE_FILE" 2>/dev/null)"
+        if [[ -n "$cached" ]] && \
+           timeout -k 3 8 git ls-remote "${cached}/https://github.com/git/git.git" HEAD &>/dev/null; then
+            exit 0
+        fi
+        echo "[ghproxy] cached mirror $cached unreachable, re-testing..." >&2
     fi
 fi
 
@@ -28,11 +34,14 @@ best_time=999999
 for mirror in "${MIRRORS[@]}"; do
     # Real shallow clone test (git-pack path — same path git clones use.
     # Catches mirrors that fail/stall on actual transfers, not just metadata)
+    # 坑:ghproxy.net 卡死时 git clone 忽略 SIGTERM,`timeout 15` 会永久挂起
+    # (实测 2026-08-04:两个克隆各占满一个核跑 2 小时不退出)。
+    # 必须加 -k 5 兜底 SIGKILL。
     test_url="${mirror}/https://github.com/tmux/tmux.git"
     test_dir="/tmp/.ghproxy-test-$$"
     rm -rf "$test_dir"
     start=$(date +%s%N)
-    if timeout 15 git clone --quiet --depth 1 "$test_url" "$test_dir" &>/dev/null; then
+    if timeout -k 5 15 git clone --quiet --depth 1 "$test_url" "$test_dir" &>/dev/null; then
         end=$(date +%s%N)
         elapsed=$(( (end - start) / 1000000 ))
         echo "[ghproxy] ${mirror}: ${elapsed}ms" >&2
