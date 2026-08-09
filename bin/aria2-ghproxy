@@ -10,7 +10,9 @@ MIRRORS=(
     "https://ghproxy.net"
 )
 
-GH_RE='^https://github\.com/.*/releases/download/.*$'
+# 匹配两种 GitHub 下载路径: releases/download/ 和 archive/(tags|heads)/*.tar.gz
+# archive 格式(如 .../archive/refs/tags/v1.2.tar.gz)也必须走镜像,否则直连 github.com 卡死
+GH_RE='^https://github\.com/.*/(releases/download/|archive/).*$'
 url="${!#}"
 
 if [[ ! "$url" =~ $GH_RE ]]; then
