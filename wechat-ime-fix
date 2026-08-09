@@ -1,0 +1,53 @@
+#!/usr/bin/env bash
+# wechat-ime-fix — 微信 flatpak 中文输入法一键修复/还原脚本
+#
+# 背景: 微信内置 fcitx 代理只认 QT_IM_MODULE=fcitx(不认 fcitx5)。
+#   environment.d 的 QT_IM_MODULE=fcitx5 会在重登录后注入沙箱,
+#   导致代理失效(症状: fcitx5-diagnose 看不到 program:wechat IC)。
+#   flatpak override 的 env 优先级最高,可锁住正确配置。
+#
+# 用法:
+#   wechat-ime-fix          # 应用配置 + 重启微信 + 验证
+#   wechat-ime-fix --check  # 只检查当前状态
+set -euo pipefail
+
+APP=com.tencent.WeChat
+OVERRIDE_ARGS=(
+  --env=QT_IM_MODULE=fcitx
+  --env=XMODIFIERS=@im=fcitx
+  --talk-name=org.fcitx.Fcitx5
+)
+
+echo "==> 1/3 应用 flatpak override(幂等,可重复执行)"
+flatpak override --user "$APP" "${OVERRIDE_ARGS[@]}"
+flatpak override --user --show "$APP" | grep -q "QT_IM_MODULE=fcitx" \
+  && echo "    ✓ QT_IM_MODULE=fcitx 已锁" \
+  || { echo "    ✗ override 未生效"; exit 1; }
+flatpak override --user --show "$APP" | grep -q "org.fcitx.Fcitx5=talk" \
+  && echo "    ✓ D-Bus talk 权限已锁" \
+  || { echo "    ✗ talk 权限未生效"; exit 1; }
+
+if [[ "${1:-}" == "--check" ]]; then
+  echo "==> 检查模式:不重启微信"
+else
+  echo "==> 2/3 重启微信让新环境生效"
+  flatpak kill "$APP" 2>/dev/null || true
+  sleep 2
+  # 后台启动(不阻塞脚本)
+  nohup flatpak run "$APP" >/dev/null 2>&1 &
+  echo "    微信重启中(等待 15s)..."
+  sleep 15
+fi
+
+echo "==> 3/3 验证输入法连接"
+IC=$(fcitx5-diagnose 2>/dev/null | grep "program:wechat" | head -1)
+if echo "$IC" | grep -q "frontend:dbus cap:800072"; then
+  echo "    ✅ 健康: $IC"
+  echo ""
+  echo "完成!微信中文输入法已修复。"
+else
+  echo "    ⚠ 未检测到健康 IC:"
+  echo "      ${IC:-<无 program:wechat IC>}"
+  echo "      可能微信还没完全启动,等几秒后重跑: wechat-ime-fix --check"
+  exit 1
+fi
