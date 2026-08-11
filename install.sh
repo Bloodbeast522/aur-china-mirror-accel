@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# aur-keikaku-dori 一键安装脚本 (aur计划通)
+# aur-update-accel 一键安装脚本 (AUR 更新加速)
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -40,7 +40,7 @@ if [[ -f "$MAKEPKG_CONF" ]] && grep -q "aria2-ghproxy" "$MAKEPKG_CONF"; then
 else
     cat >> "$MAKEPKG_CONF" <<EOF
 
-# aur-keikaku-dori: AUR 源码下载走 aria2 + ghproxy 镜像 (https://github.com/Bloodbeast522/aur-keikaku-dori)
+# aur-update-accel: AUR 源码下载走 aria2 + ghproxy 镜像 (https://github.com/Bloodbeast522/aur-update-accel)
 'https::$BIN_DIR/aria2-ghproxy -UWget -s16 -x16 -o %o %u'
 'http::$BIN_DIR/aria2-ghproxy -UWget -s16 -x16 -o %o %u'
 EOF
@@ -60,7 +60,7 @@ elif ! sudo -n true 2>/dev/null; then
 else
     sudo mkdir -p /etc/makepkg.d
     sudo tee "$GITCONFIG_SYS" > /dev/null <<'EOF'
-# aur-keikaku-dori: makepkg 构建时 git 走镜像 (makepkg 屏蔽 ~/.gitconfig,只读这里)
+# aur-update-accel: makepkg 构建时 git 走镜像 (makepkg 屏蔽 ~/.gitconfig,只读这里)
 [url "https://ghfast.top/https://github.com/"]
 	insteadOf = https://github.com/
 EOF
