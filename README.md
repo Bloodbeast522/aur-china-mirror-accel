@@ -1,4 +1,4 @@
-# AUR 更新加速 (aur-update-accel)
+# AUR 国内镜像加速 (aur-china-mirror-accel)
 
 > 計画通り。纯 AI 编写,作者毫无经验,基本不会更新,对项目不承担任何责任。
 > (此简介也是 AI 编写)
@@ -49,7 +49,7 @@ AUR 构建其实有 4 条下载链路,每条都被墙或龟速,本方案全部�
 ## 方法一:AUR 安装(⚠️ 当前不可用,跳过)
 
 ```bash
-paru -S aur-update-accel
+paru -S aur-china-mirror-accel
 ```
 
 > **⚠️ 暂不可用**:AUR 的开放注册目前是关闭状态(注册页返回 503),
@@ -62,16 +62,16 @@ paru -S aur-update-accel
 
 ```bash
 # 第 1 步:下载预编译包(约 17KB,极快)
-wget https://github.com/Bloodbeast522/aur-update-accel/releases/download/v1.0.0/aur-update-accel-1.0.0-3-any.pkg.tar.zst
+wget https://github.com/Bloodbeast522/aur-china-mirror-accel/releases/download/v1.0.0/aur-china-mirror-accel-1.0.0-3-any.pkg.tar.zst
 
 # 第 2 步:安装(aria2 不需要手动装,setup 会自动装)
-sudo pacman -U aur-update-accel-1.0.0-3-any.pkg.tar.zst
+sudo pacman -U aur-china-mirror-accel-1.0.0-3-any.pkg.tar.zst
 
 # 第 3 步:一键配置(自动装 aria2 → 配全部 4 条链路 → 测速选镜像)
-aur-update-accel-setup
+aur-china-mirror-accel-setup
 ```
 
-`aur-update-accel-setup` 会自动完成:
+`aur-china-mirror-accel-setup` 会自动完成:
 1. 检测 aria2,没有就自动 `sudo pacman -S aria2`(会要你输 sudo 密码)
 2. 装 4 个脚本到 `~/.local/bin`
 3. 配置 makepkg DLAGENT(bin 包 + tar.gz 下载走镜像)
@@ -80,7 +80,7 @@ aur-update-accel-setup
 6. 测速选最快镜像,设置用户级 insteadOf
 
 > 国内下载 GitHub Release 慢?用镜像前缀:
-> `wget https://gh-proxy.com/https://github.com/Bloodbeast522/aur-update-accel/releases/download/v1.0.0/aur-update-accel-1.0.0-3-any.pkg.tar.zst`
+> `wget https://gh-proxy.com/https://github.com/Bloodbeast522/aur-china-mirror-accel/releases/download/v1.0.0/aur-china-mirror-accel-1.0.0-3-any.pkg.tar.zst`
 
 ## 方法三:GitHub 手动安装(源码)
 
@@ -88,12 +88,12 @@ aur-update-accel-setup
 
 ```bash
 # 第 1 步:下载 + 跑安装脚本(会自动装 aria2,提示 sudo 密码)
-git clone https://github.com/Bloodbeast522/aur-update-accel
-cd aur-update-accel
+git clone https://github.com/Bloodbeast522/aur-china-mirror-accel
+cd aur-china-mirror-accel
 ./install.sh
 ```
 
-install.sh 做的事和 `aur-update-accel-setup` 完全一样(6 步)。
+install.sh 做的事和 `aur-china-mirror-accel-setup` 完全一样(6 步)。
 
 ### 确认 `~/.local/bin` 在 PATH 里
 
