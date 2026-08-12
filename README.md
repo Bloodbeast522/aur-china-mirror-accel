@@ -31,6 +31,25 @@ AUR 构建其实有 4 条下载链路,每条都被墙或龟速,本方案全部�
 
 四条链路互不干扰,一次配置永久生效,每个环节都有镜像兜底。
 
+## 附赠:AUR 包安全审查(防投毒)
+
+> 2026 年以来 AUR 投毒事件变多(恶意 PKGBUILD 通过 curl|bash 拉远程脚本、
+> base64 混淆载荷、伪造更新等手段植入后门)。本方案安装时会**额外部署一个
+> 轻量安全审查机制**,在装包前帮你把关。
+
+- `paru -S 包` / `-Syu` 更新前,**自动抓取该包的 PKGBUILD + 安装脚本**做静态扫描
+- 高危模式直接**拦下询问**:`curl|bash` 远程脚本直灌、`base64 -d` 混淆、
+  `/dev/tcp` 后门、setuid、写 /etc、改系统账户、eval 动态代码等
+- 同时显示**维护者 / 票数 / 热度 / 是否过期**,并和上次审查的版本做 diff
+  (更新时改了什么一目了然)
+- 全部**本地运行**,不联网上传任何数据,不需要任何 API Key
+- 想跳过:`paru --noaudit ...`;注意 `sudo paru` 会绕过审查(paru 自己会 sudo,正常用不到)
+- 审查引擎可单独使用:`aur-audit <包名>`,或 `aur-audit --selftest` 自检
+
+**审查的边界(别迷信):** 它只审 PKGBUILD / 安装脚本的**文本**,审不了编译产物
+里的真实恶意代码。高危包拦下来之后,请自己再看一眼报告,或者去 AUR 评论区 /
+社区搜一下这个包最近的讨论。
+
 ## 为什么要开源
 
 这个项目存在的意义,就是**解决我自己 CachyOS 系统在国内无代理情况下 AUR 更新和安装包的问题**。踩坑踩出来的组合方案,网上没找到现成的,就开源出来——万一有同样处境的人,能省点事。
@@ -76,11 +95,12 @@ aur-china-mirror-accel-setup
 
 `aur-china-mirror-accel-setup` 会自动完成:
 1. 检测 aria2,没有就自动 `sudo pacman -S aria2`(会要你输 sudo 密码)
-2. 装 4 个脚本到 `~/.local/bin`
+2. 装 5 个脚本到 `~/.local/bin`(含安全审查引擎 aur-audit)
 3. 配置 makepkg DLAGENT(bin 包 + tar.gz 下载走镜像)
 4. 写 `/etc/makepkg.d/gitconfig`(-git 包克隆走镜像,要 sudo)
 5. 写 `~/.config/pip/pip.conf`(Python 依赖走清华镜像)
 6. 测速选最快镜像,设置用户级 insteadOf
+7. 部署 AUR 安全审查包装(自动识别 fish/bash,装完即生效)
 
 > 国内下载 GitHub Release 慢?用镜像前缀:
 > `wget https://gh-proxy.com/https://github.com/Bloodbeast522/aur-china-mirror-accel/releases/download/v1.0.0/aur-china-mirror-accel-1.0.0-3-any.pkg.tar.zst`
@@ -96,7 +116,7 @@ cd aur-china-mirror-accel
 ./install.sh
 ```
 
-install.sh 做的事和 `aur-china-mirror-accel-setup` 完全一样(6 步)。
+install.sh 做的事和 `aur-china-mirror-accel-setup` 完全一样(7 步)。
 
 ### 确认 `~/.local/bin` 在 PATH 里
 
@@ -127,6 +147,9 @@ cat ~/.config/pip/pip.conf
 # 5) 镜像下载测试(404 是正常的,看有没有镜像尝试)
 ~/.local/bin/aria2-ghproxy -UWget -s16 -x16 -o /tmp/x.part \
   https://github.com/foo/bar/releases/download/v1/x.tar.gz
+
+# 6) 安全审查引擎自检(应全 OK)
+~/.local/bin/aur-audit --selftest
 ```
 
 看到类似 `[aria2-ghproxy] Trying https://gh-proxy.com ...` 就说明生效了。
@@ -138,6 +161,7 @@ cat ~/.config/pip/pip.conf
 - **`-bin` 包** → aria2 多镜像下载
 - **源码 tar.gz** → aria2 16 线程
 - **Python 依赖** → 清华 pip 镜像
+- **安全审查** → 装/更新前自动扫 PKGBUILD,高危拦截(输 y 才继续)
 
 ## 已知限制
 
@@ -148,6 +172,9 @@ cat ~/.config/pip/pip.conf
   下一个镜像;全都不支持时回退全量克隆,仅大仓库会慢)
 - 镜像站本身会挂会换,`ghproxy-git-speedtest` 就是为此设计的;镜像失效时
   删掉缓存 `rm -f /tmp/.ghproxy-git-speed` 重新测速
+- 安全审查只审 PKGBUILD / 安装脚本文本,审不了编译产物里的恶意代码;
+  `curl|bash` 类安装器会被拦截,但确属正常安装器时输 y 即可放行
+- AUR 官方接口偶尔抽风(502 / 连接中断),此时审查会放行并提示,不会卡住安装
 
 ## License
 

