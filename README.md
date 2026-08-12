@@ -83,13 +83,13 @@ paru -S aur-china-mirror-accel
 不用克隆仓库、不用等 AUR、不用手动装依赖。3 步全搞定:
 
 ```bash
-# 第 1 步:下载预编译包(约 17KB,极快)
-wget https://github.com/Bloodbeast522/aur-china-mirror-accel/releases/download/v1.0.0/aur-china-mirror-accel-1.0.0-3-any.pkg.tar.zst
+# 第 1 步:下载预编译包(约 29KB,极快)
+wget https://github.com/Bloodbeast522/aur-china-mirror-accel/releases/download/v1.0.1/aur-china-mirror-accel-1.0.1-1-any.pkg.tar.zst
 
 # 第 2 步:安装(aria2 不需要手动装,setup 会自动装)
-sudo pacman -U aur-china-mirror-accel-1.0.0-3-any.pkg.tar.zst
+sudo pacman -U aur-china-mirror-accel-1.0.1-1-any.pkg.tar.zst
 
-# 第 3 步:一键配置(自动装 aria2 → 配全部 4 条链路 → 测速选镜像)
+# 第 3 步:一键配置(自动装 aria2+git → 配 4 条链路 + 安全审查 → 测速选镜像)
 aur-china-mirror-accel-setup
 ```
 
@@ -103,7 +103,7 @@ aur-china-mirror-accel-setup
 7. 部署 AUR 安全审查包装(自动识别 fish/bash,装完即生效)
 
 > 国内下载 GitHub Release 慢?用镜像前缀:
-> `wget https://gh-proxy.com/https://github.com/Bloodbeast522/aur-china-mirror-accel/releases/download/v1.0.0/aur-china-mirror-accel-1.0.0-3-any.pkg.tar.zst`
+> `wget https://gh-proxy.com/https://github.com/Bloodbeast522/aur-china-mirror-accel/releases/download/v1.0.1/aur-china-mirror-accel-1.0.1-1-any.pkg.tar.zst`
 
 ## 方法三:GitHub 手动安装(源码)
 
