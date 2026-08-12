@@ -8,18 +8,20 @@ MAKEPKG_CONF="$HOME/.config/pacman/makepkg.conf"
 PIP_CONF="$HOME/.config/pip/pip.conf"
 GITCONFIG_SYS="/etc/makepkg.d/gitconfig"
 
-echo "==> 0/7 检查/安装依赖 aria2"
-if ! command -v aria2c >/dev/null 2>&1; then
-    echo "    未安装 aria2,现在自动安装(需要输入 sudo 密码)..."
-    if sudo -n true 2>/dev/null; then
-        sudo pacman -S --noconfirm aria2
-    else
-        echo "    无法免密执行 sudo,请手动运行: sudo pacman -S aria2"
-        exit 1
+echo "==> 0/7 检查/安装依赖 aria2 + git(pacman -U 不自动装依赖,这里自管)"
+for dep in aria2 git; do
+    if ! command -v "$dep" >/dev/null 2>&1; then
+        echo "    未安装 $dep,现在自动安装(需要输入 sudo 密码)..."
+        if sudo -n true 2>/dev/null; then
+            sudo pacman -S --noconfirm "$dep"
+        else
+            echo "    无法免密执行 sudo,请手动运行: sudo pacman -S $dep"
+            exit 1
+        fi
     fi
-fi
+done
 command -v aria2c >/dev/null 2>&1 || { echo "错误: aria2 安装失败"; exit 1; }
-echo "    ✓ aria2 就绪"
+echo "    ✓ aria2 + git 就绪"
 
 echo "==> 1/7 安装脚本到 $BIN_DIR"
 mkdir -p "$BIN_DIR"
