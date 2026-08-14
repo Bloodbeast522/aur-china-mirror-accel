@@ -6,14 +6,15 @@
 
 English: A China-friendly helper for Arch/CachyOS that makes `paru -S` work
 without a proxy — partial-clone + multi-mirror for `-git` packages, aria2
-multi-mirror DLAGENT for releases, TUNA pip mirror for Python deps.
+multi-mirror DLAGENT for releases, TUNA pip mirror for Python deps,
+IPv4-first gai.conf for AUR's own endpoints.
 Works everywhere, designed for mainland China.
 
 ## 这个项目是干嘛的
 
 一句话:**让 CachyOS / Arch 在国内没有代理的情况下,`paru -S` 更新和安装 AUR 包不再卡死。**
 
-**主要受众:初次尝试 Arch Linux 的新手**——不用懂镜像、不用懂 makepkg,照着安装指南一步步来就行,自动配好 4 条链路。
+**主要受众:初次尝试 Arch Linux 的新手**——不用懂镜像、不用懂 makepkg,照着安装指南一步步来就行,自动配好 5 条链路。
 
 AUR 构建其实有 4 条下载链路,每条都被墙或龟速,本方案全部覆盖:
 
@@ -23,13 +24,14 @@ AUR 构建其实有 4 条下载链路,每条都被墙或龟速,本方案全部�
 | 2 | **`-bin` 包 release 下载** | GitHub release 文件被墙 | DLAGENT 换成 aria2-ghproxy:16 线程 + 多镜像自动回退(gh-proxy.com → ghproxy.net → 直连) |
 | 3 | **源码 tar.gz 下载** | GitHub 源码归档慢 | 同一个 DLAGENT,aria2 16 线程 |
 | 4 | **Python 依赖(pip)** | AUR Python 包 package() 里 pip 直连 PyPI 被重置(ConnectionResetError 104) | 用户级 `~/.config/pip/pip.conf` 指向清华镜像,所有 venv 的 pip 自动生效 |
+| 5 | **AUR 官方接口(paru 查更新 / 拉 PKGBUILD)** | 国内 IPv6 国际路径随机掐 TLS 连接(报 `SSL unexpected eof` / connection closed),paru 和审查脚本时好时坏 | `/etc/gai.conf` 全局优先 IPv4(一行配置,对所有程序生效) |
 
 另外还有一个**隐藏坑**:makepkg 主动屏蔽 `~/.gitconfig`(`GIT_CONFIG_GLOBAL=/dev/null`),
 所以 git 镜像规则写在用户级对 `-git` 包克隆**无效**——必须写进
 `/etc/makepkg.d/gitconfig`(makepkg 官方支持的 `GIT_CONFIG_SYSTEM` 入口)。
 本方案自动处理。
 
-四条链路互不干扰,一次配置永久生效,每个环节都有镜像兜底。
+五条链路互不干扰,一次配置永久生效,每个环节都有镜像兜底。
 
 ## 附赠:AUR 包安全审查(防投毒)
 
@@ -101,6 +103,10 @@ aur-china-mirror-accel-setup
 5. 写 `~/.config/pip/pip.conf`(Python 依赖走清华镜像)
 6. 测速选最快镜像,设置用户级 insteadOf
 7. 部署 AUR 安全审查包装(自动识别 fish/bash,装完即生效)
+8. 写 `/etc/gai.conf` 全局优先 IPv4(解决 AUR 官方接口 IPv6 掐连接)
+
+> ⚠ v1.0.1 Release 的 setup 还是 7 步版,不含第 8 步。用 Release 安装的请手动补一行:
+> `sudo sed -i 's/^#precedence ::ffff:0:0\/96/precedence ::ffff:0:0\/96/' /etc/gai.conf`
 
 > 国内下载 GitHub Release 慢?用镜像前缀:
 > `wget https://gh-proxy.com/https://github.com/Bloodbeast522/aur-china-mirror-accel/releases/download/v1.0.1/aur-china-mirror-accel-1.0.1-1-any.pkg.tar.zst`
@@ -116,7 +122,7 @@ cd aur-china-mirror-accel
 ./install.sh
 ```
 
-install.sh 做的事和 `aur-china-mirror-accel-setup` 完全一样(7 步)。
+install.sh 做的事和 `aur-china-mirror-accel-setup` 完全一样(8 步)。
 
 ### 确认 `~/.local/bin` 在 PATH 里
 
@@ -150,6 +156,9 @@ cat ~/.config/pip/pip.conf
 
 # 6) 安全审查引擎自检(应全 OK)
 ~/.local/bin/aur-audit --selftest
+
+# 7) gai.conf 全局 IPv4 优先(解决 AUR 官方接口随机断连)
+grep '^precedence' /etc/gai.conf   # 应看到 ::ffff:0:0/96 开头的行
 ```
 
 看到类似 `[aria2-ghproxy] Trying https://gh-proxy.com ...` 就说明生效了。
@@ -161,6 +170,7 @@ cat ~/.config/pip/pip.conf
 - **`-bin` 包** → aria2 多镜像下载
 - **源码 tar.gz** → aria2 16 线程
 - **Python 依赖** → 清华 pip 镜像
+- **AUR 官方接口** → gai.conf 全局 IPv4 优先,不再随机断连
 - **安全审查** → 装/更新前自动扫 PKGBUILD,高危拦截(输 y 才继续)
 
 ## 已知限制
@@ -174,7 +184,9 @@ cat ~/.config/pip/pip.conf
   删掉缓存 `rm -f /tmp/.ghproxy-git-speed` 重新测速
 - 安全审查只审 PKGBUILD / 安装脚本文本,审不了编译产物里的恶意代码;
   `curl|bash` 类安装器会被拦截,但确属正常安装器时输 y 即可放行
-- AUR 官方接口偶尔抽风(502 / 连接中断),此时审查会放行并提示,不会卡住安装
+- AUR 官方接口偶尔抽风(502 / 连接中断 / `SSL unexpected eof`)。502 是服务器本身问题;
+  若 SSL 断连频繁,多半是 IPv6 国际路径被掐,本方案已用 gai.conf 优先 IPv4 缓解。
+  审查脚本遇到网络失败会放行并提示,不会卡住安装
 
 ## License
 
